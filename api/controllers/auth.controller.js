@@ -2,6 +2,7 @@ import User from '../models/user.model.js';
 import bcrypt from 'bcryptjs';
 import { errorHandler } from '../utils/error.js';
 import jwt from 'jsonwebtoken';
+import e from 'express';
 export const signup = async (req, res, next) => {
     const { userName, email, password } = req.body;
     const hashPassword = await bcrypt.hash(password, 10);
@@ -92,4 +93,8 @@ export const google = async (req, res, next) => {
     } catch (error) {
         next(error);
     }
+};
+
+export const signout = (req, res) => {
+    res.clearCookie('access_token').status(200).json('Signout success!');
 };
