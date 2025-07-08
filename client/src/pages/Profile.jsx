@@ -1,12 +1,13 @@
 import { useSelector } from 'react-redux';
 import { useEffect, useRef, useState } from 'react';
-import {
-  getDownloadURL,
-  getStorage,
-  ref,
-  uploadBytesResumable,
-} from 'firebase/storage';
-import { app } from '../firebase';
+import { supabase } from '../supabaseClient';
+// import {
+//   getDownloadURL,
+//   getStorage,
+//   ref,
+//   uploadBytesResumable,
+// } from 'firebase/storage';
+// import { app } from '../firebase';
 
 export default function Profile() {
   const fileRef = useRef(null);
@@ -22,26 +23,75 @@ export default function Profile() {
     }
   }, [image]);
   const handleFileUpload = async (image) => {
-    const storage = getStorage(app);
-    const fileName = new Date().getTime() + image.name;
-    const storageRef = ref(storage, fileName);
-    const uploadTask = uploadBytesResumable(storageRef, image);
-    uploadTask.on(
-      'state_changed',
-      (snapshot) => {
-        const progress =
-          (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-        setImagePercent(Math.round(progress));
-      },
-      (error) => {
-        setImageError(true);
-      },
-      () => {
-        getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) =>
-          setFormData({ ...formData, profilePicture: downloadURL })
-        );
+    if (image.size > 2 * 1024 * 1024) {
+      setImageError('File size must be less than 2MB');
+      return;
+    }
+    if (!image.type.startsWith('image/')) {
+      setImageError('Only image files allowed');
+      return;
+    }
+
+    setImageError(false);
+    setImagePercent(0);
+
+    const fileName = `${Date.now()}-${image.name}`;
+    try {
+      // Upload to Supabase bucket
+      const bucket = import.meta.env.VITE_SUPABASE_BUCKET_NAME;
+      const { data, error } = await supabase.storage
+        .from(bucket) // your bucket name
+        .upload(`public/${fileName}`, image, {
+          cacheControl: '3600',
+          upsert: true,
+          contentType: image.type,
+        });
+
+      if (error) {
+        console.error('Upload error:', error);
+        setImageError('Upload failed. Try again.');
+        return;
       }
-    );
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from(bucket)
+        .getPublicUrl(`public/${fileName}`);
+
+      const publicUrl = urlData.publicUrl;
+
+      // Update formData with new profile picture URL
+      setFormData((prev) => ({
+        ...prev,
+        profilePicture: publicUrl,
+      }));
+
+      setImagePercent(100); // No progress API, so mark complete
+    } catch (error) {
+      console.error(error);
+      setImageError('Something went wrong. Try again.');
+    }
+    //firebase storage upload
+    // const storage = getStorage(app);
+    // const fileName = new Date().getTime() + image.name;
+    // const storageRef = ref(storage, fileName);
+    // const uploadTask = uploadBytesResumable(storageRef, image);
+    // uploadTask.on(
+    //   'state_changed',
+    //   (snapshot) => {
+    //     const progress =
+    //       (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+    //     setImagePercent(Math.round(progress));
+    //   },
+    //   (error) => {
+    //     setImageError(true);
+    //   },
+    //   () => {
+    //     getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) =>
+    //       setFormData({ ...formData, profilePicture: downloadURL })
+    //     );
+    //   }
+    // );
   };
   return (
     <div className="p-3 max-w-lg mx-auto">
